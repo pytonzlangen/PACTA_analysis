@@ -64,6 +64,28 @@ clean_portfolio_col_types <- function(portfolio, grouping_variables){
   
   portfolio$currency <- if_else(portfolio$currency == "Euro","EUR",portfolio$currency)
   
+  if(is.character(portfolio$investor_name) == FALSE) {
+    write_log(msg = paste("Wrong variable class for investor_name. Should be character, but is",
+                          class(portfolio$investor_name)))
+  }
+  if(is.character(portfolio$portfolio_name) == FALSE) {
+    write_log(msg = paste("Wrong variable class for portfolio_name Should be character, but is",
+                          class(portfolio$portfolio_name)))
+  }
+  if(is.numeric(portfolio$market_value) == FALSE) {
+    write_log(msg = paste("Wrong variable class for market_value Should be numeric, but is",
+                          class(portfolio$market_value)))
+  }
+  if(is.character(portfolio$currency) == FALSE) {
+    write_log(msg = paste("Wrong variable class for currency Should be character, but is",
+                          class(portfolio$currency)))
+  }
+  if(is.character(portfolio$isin) == FALSE) {
+    write_log(msg = paste("Wrong variable class for isin Should be character, but is",
+                          class(portfolio$isin)))
+  }
+  ###what about number_of_shares???
+  
   portfolio
 }
 
@@ -71,6 +93,10 @@ clear_portfolio_input_blanks <- function(portfolio){
   
   if(any(portfolio[,grouping_variables] == ""| is.na(portfolio[,grouping_variables]))){
     print("Warning: missing grouping variables, corresponding rows removed")
+    write_log(msg = paste("Warning: some entries of the uploaded portfolio file were removed
+              because of missing values in at least one of the variables", grouping_variables,
+                          "\n To ensure complete analysis, please upload a file without
+                          missing values in these columns."))
     
     portfolio <- portfolio %>% filter_at(
       grouping_variables, all_vars(!is.na(.))
@@ -157,6 +183,7 @@ check_missing_cols <- function(portfolio, grouping_variables){
   missing_columns <-setdiff(required_input_cols,colnames(portfolio))
   
   if(length(missing_columns) > 0){
+    write_log(msg = paste0("The input file is missing the following data columns: ", missing_columns))
     stop(paste0("The input file is missing the following data columns: ", missing_columns))
   }
   
@@ -820,14 +847,19 @@ get_and_clean_fund_data <- function(){
   
   fund_data <- NA
   # Fund Data
-  if(file.exists(paste0(analysis_inputs_path,"/fund_data_",financial_timestamp,".rda"))){
-    fund_data <- readRDS(paste0(analysis_inputs_path,"/fund_data_",financial_timestamp,".rda"))
-  }else if(file.exists(paste0(analysis_inputs_path,"/fund_data_2018Q4.rda"))){
-    fund_data <- readRDS(paste0(analysis_inputs_path,"/fund_data_2018Q4.rda"))
+  if(file.exists(paste0(analysis_inputs_path,"fund_data_",financial_timestamp,".rda"))){
+    fund_data <- readRDS(paste0(analysis_inputs_path,"fund_data_",financial_timestamp,".rda"))
+  } else if(file.exists(paste0(analysis_inputs_path,"fund_data_",financial_timestamp,".rds"))){
+    fund_data <- readRDS(paste0(analysis_inputs_path,"fund_data_",financial_timestamp,".rds"))
+  } else if(file.exists(paste0(analysis_inputs_path,"fund_data_2018Q4.rda"))){
+    fund_data <- readRDS(paste0(analysis_inputs_path,"fund_data_2018Q4.rda"))
     print("Old Fund Data being used. Replace FundsData2018Q4 or check name of file.")
-  }else if(file.exists(paste0(analysis_inputs_path, "/SFC_26052020_funds.csv"))){
-    fund_data <- read_csv(paste0(analysis_inputs_path, "/SFC_26052020_funds.csv"))
-    print("2020Q2 SFC fund data being used")
+  # }else if(file.exists(paste0(analysis_inputs_path, "/SFC_26052020_funds.csv"))){
+  #   fund_data <- read_csv(paste0(analysis_inputs_path, "/SFC_26052020_funds.csv"))
+  #   print("2020Q2 SFC fund data being used")
+  }else if(file.exists(paste0(analysis_inputs_path, "Liechtenstein_p2020_fund_holdings_2019Q4.csv"))){
+    fund_data <- read_csv(paste0(analysis_inputs_path, "Liechtenstein_p2020_fund_holdings_2019Q4.csv"))
+    print("2019Q4 (?) Liechtenstein fund data being used")
   }else{
     if(!data_check(fund_data)){
       warning("No fund data available")}
@@ -858,7 +890,7 @@ get_and_clean_fin_data <- function(fund_data){
   fin_data_raw <- fin_data_raw %>%
     filter(!(isin %in% rm_duplicates))
 
-  if(!unique(fin_data_raw$financial_timestamp) == financial_timestamp){print("Financial timestamp not equal")}
+    if(!unique(fin_data_raw$financial_timestamp) == financial_timestamp){print("Financial timestamp not equal")}
   
   overrides <- read_csv("data/fin_sector_overrides.csv",
                         col_types = "ccdc")
@@ -922,14 +954,14 @@ get_and_clean_fin_data <- function(fund_data){
   
 }
 
-add_bics_sector <- function(fin_data){
-  
-  bics_bridge <- read_csv("data/bics_bridge.csv")
-  
-  fin_data_ <- left_join(fin_data, bics_bridge, by = c("security_bics_subgroup" = "bics_subsector"))
-  
-  
-}
+# add_bics_sector <- function(fin_data){
+#   
+#   bics_bridge <- read_csv("data/bics_bridge.csv")
+#   
+#   fin_data_ <- left_join(fin_data, bics_bridge, by = c("security_bics_subgroup" = "bics_subsector"))
+#   
+#   
+# }
 
 get_and_clean_revenue_data <- function(){
   
@@ -955,7 +987,7 @@ get_and_clean_company_fin_data <- function(){
   comp_fin_data_raw <- comp_fin_data_raw %>% select(
     company_id, company_name, bloomberg_id, country_of_domicile, corporate_bond_ticker, bics_sector, bics_subgroup,
     icb_subgroup, mapped_sector, has_asset_level_data, has_assets_in_matched_sector, sectors_with_assets, 
-    current_shares_outstanding_all_classes, company_status, bond_debt_out,
+    current_shares_outstanding_all_classes, company_status, market_cap, bond_debt_out,
     financial_timestamp
   )
   
@@ -1109,7 +1141,7 @@ create_portfolio_subset <- function(portfolio, portfolio_type, relevant_fin_data
     portfolio_subset <- portfolio_subset %>% 
       select(all_of(grouping_variables), holding_id, value_usd, number_of_shares, 
              company_id, company_name, id, id_name, country_of_domicile, unit_share_price, current_shares_outstanding_all_classes,
-             financial_sector, has_ald_in_fin_sector)
+             financial_sector, has_ald_in_fin_sector, bics_sector)
     
   }else{
     print(paste0("No ",portfolio_type," in portfolio"))
@@ -1208,7 +1240,7 @@ create_audit_file <- function(portfolio_total){
   
   audit_file <- portfolio_total %>% 
     select(all_of(grouping_variables), holding_id, isin, value_usd, company_name, asset_type,  has_revenue_data, valid_input, 
-           direct_holding, security_mapped_sector, financial_sector, sectors_with_assets, has_ald_in_fin_sector,flag)
+           direct_holding, security_mapped_sector, financial_sector, bics_sector, sectors_with_assets, has_ald_in_fin_sector,flag)
   
   if(has_revenue == FALSE){audit_file <- audit_file %>% select(-has_revenue_data)}
   
@@ -1497,4 +1529,26 @@ add_other_to_sector_classifications <- function(audit){
     mutate(sector = ifelse(sector %in% c("Industrials", "Energy", "Utilities", "Materials"), paste0("Other ", sector), sector))
   
   audit
+}
+
+add_bics_sector <- function(portfolio, comp_fin_data, debt_fin_data){
+  #join in bics sectors for EQ and CB
+  portfolio_eq <- portfolio %>% filter(asset_type == "Equity") %>% 
+    left_join(comp_fin_data %>% select(company_id, bics_sector), by = c("company_id"))
+  portfolio_cb <- portfolio %>% filter(asset_type == "Bonds") %>% 
+    left_join(debt_fin_data %>% select(corporate_bond_ticker, bics_sector), by = c("corporate_bond_ticker"))
+  #separate out other asset_types to handle new variable
+  portfolio_other <- portfolio %>% filter(!asset_type %in% c("Equity", "Bonds"))
+  #if other asset_types has pos. number of entries, add bics_sector with NA value, otherwise add column name
+  if (data_check(portfolio_other)){
+    portfolio_other <- portfolio_other %>% mutate(bics_sector = NA_character_)
+  }else{
+    portfolio_other <- portfolio_other %>% add_column("bics_sector")
+    
+  }
+  #bind the diff asset types back together
+  portfolio <- rbind(portfolio_eq, portfolio_cb, portfolio_other)
+  
+  return(portfolio)
+  
 }
